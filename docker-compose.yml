@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:15-alpine
+
+    environment:
+      POSTGRES_DB: ${DB_NAME:-diplom}
+      POSTGRES_USER: ${DB_USER:-diplom_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-diplom_password}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-diplom_user} -d ${DB_NAME:-diplom}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.docker
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pg_data:

@@ -21,6 +21,7 @@ local_settings.py
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 .vscode/
 .idea/
