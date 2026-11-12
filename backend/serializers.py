@@ -33,6 +33,8 @@ class ProductSerializer(serializers.ModelSerializer): # Сериализатор
 
 class ContactSerializer(serializers.ModelSerializer): # Сериализатор контакта
     
+    MAX_ADDRESSES = 5
+    
     class Meta:
         model = Contact
         fields = (
@@ -41,26 +43,42 @@ class ContactSerializer(serializers.ModelSerializer): # Сериализатор
         )
         read_only_fields = ('id',)
      
-    MAX_ADDRESSES = 5
 
     def validate(self, attrs):
-        if self.instance is not None:
-            return attrs
-
+        contact_type = attrs.get('type', getattr(self.instance, 'type', None))
         user = self.context['request'].user
-        contact_type = attrs.get('type')
-
+        
         if contact_type == Contact.Type.PHONE:
-            if Contact.objects.filter(user=user, type=Contact.Type.PHONE).exists():
-                raise serializers.ValidationError('У пользователя может быть только один телефон')
-
-        elif contact_type == Contact.Type.ADDRESS:
-            count = Contact.objects.filter(user=user, type=Contact.Type.ADDRESS).count()
-            if count >= self.MAX_ADDRESSES:
+            phone = attrs.get('phone', getattr(self.instance, 'phone', ''))
+            if not phone:
                 raise serializers.ValidationError(
-                    f'У пользователя может быть не более {self.MAX_ADDRESSES} адресов'
+                    {'phone': 'Телефон обязателен'}
+                )
+        elif contact_type == Contact.Type.ADDRESS:
+            city = attrs.get('city', getattr(self.instance, 'city', ''))
+            street = attrs.get('street', getattr(self.instance, 'street', ''))
+            house = attrs.get('house', getattr(self.instance, 'house', ''))
+            if not all([city, street, house]):
+                raise serializers.ValidationError(
+                    {'city': 'Для адреса обязательны: город, улица, дом'}
                 )
 
+        if contact_type == Contact.Type.PHONE:
+            qs = Contact.objects.filter(user=user, type=Contact.Type.PHONE)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'У пользователя может быть только один телефон'
+                )
+        elif contact_type == Contact.Type.ADDRESS:
+            qs = Contact.objects.filter(user=user, type=Contact.Type.ADDRESS)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.count() >= self.MAX_ADDRESSES:
+                raise serializers.ValidationError(
+                    f'Не более {self.MAX_ADDRESSES} адресов'
+                )
         return attrs
 
 

@@ -116,6 +116,18 @@ class BasketView(viewsets.ViewSet): # Корзина пользователя
             )
 
         basket = self._get_basket(request.user)
+
+        existing = OrderItem.objects.filter(
+            order=basket, product_info=product_info,).first()
+        already = existing.quantity if existing else 0
+
+        if already + quantity > product_info.quantity:
+            return Response(
+                {'error': f'На складе только {product_info.quantity} шт. '
+                        f'(в корзине уже {already})'},
+                status=400,
+        )
+
         item, created = OrderItem.objects.get_or_create(
             order=basket,
             product_info=product_info,
@@ -173,34 +185,41 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet): # Заказы пользов
             )
 
         contact_id = request.data.get('contact_id')
-        error = self._validate_order(order, contact_id)
+        contact, error = self._validate_order(order, contact_id, request.user)
         if error:
             return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
-        contact = Contact.objects.get(id=contact_id, user=request.user)
         order.contact = contact
         order.status = Order.Status.CONFIRMED
         order.save()
 
         self._send_emails(order, contact)
-
         return Response(OrderSerializer(order).data)
+
 
     @action(detail=True,methods=['post'],permission_classes=[permissions.IsAdminUser],)
     def set_status(self, request, pk=None): # POST /orders/{pk}/set_status/ смена статуса админом
         order = self.get_object()
         new_status = request.data.get('status')
 
-        valid_statuses = [choice[0] for choice in Order.Status.choices]
-        if new_status not in valid_statuses:
+        valid = [c[0] for c in Order.Status.choices]
+        if new_status not in valid:
+            return Response({'error': f'Допустимые: {valid}'}, status=400)
+
+        if order.status == Order.Status.NEW:
+            return Response({'error': 'Нельзя менять статус корзины'}, status=400)
+        if new_status == Order.Status.NEW:
+            return Response({'error': 'Нельзя вернуть в статус "Новый"'}, status=400)
+        if order.status in (Order.Status.DELIVERED, Order.Status.CANCELED):
             return Response(
-                {'error': f'Недопустимый статус. Допустимые статусы: {valid_statuses}'},
-                status=status.HTTP_400_BAD_REQUEST,
+                {'error': f'Заказ уже в финальном статусе: {order.get_status_display()}'},
+                status=400,
             )
-        old_status = order.get_status_display()
+
+        old = order.get_status_display()
         order.status = new_status
         order.save(update_fields=['status'])
-        self._send_status_email(order, old_status)
+        self._send_status_email(order, old)
         return Response(OrderSerializer(order).data)
 
 
@@ -224,20 +243,37 @@ class OrderViewSet(viewsets.ReadOnlyModelViewSet): # Заказы пользов
 
 
     @staticmethod
-    def _validate_order(order, contact_id): # Проверка заказа перед подтверждением
+    def _validate_order(order, contact_id, request_user): # Проверка заказа перед подтверждением
         if not contact_id:
-            return 'contact_id обязателен'
-        if not Contact.objects.filter(id=contact_id, user=order.user).exists():
-            return 'Контакт не найден'
+            return None, 'contact_id обязателен'
+        
+        contact = Contact.objects.filter(id=contact_id, user=request_user).first()
+        if contact is None:
+            return None, 'Контакт не найден'
+
+        if contact.type != Contact.Type.ADDRESS:
+            return None, 'Для доставки нужен адрес, а не телефон'
+
         if not order.items.exists():
-            return 'Корзина пуста'
+            return None, 'Корзина пуста'
+
         for item in order.items.all():
             if not item.product_info.is_available:
-                return f'Товар «{item.product_info.product.name}» недоступен'
-        return None
+                return None, f'Товар «{item.product_info.product.name}» недоступен'
+            if item.quantity > item.product_info.quantity:
+                return None, (
+                    f'Товара «{item.product_info.product.name}» не хватает '
+                    f'(заказано {item.quantity}, в наличии {item.product_info.quantity})'
+                )
+        return contact, None
 
     @staticmethod
     def _send_emails(order, contact): # Письма при подтверждении заказа: клиенту и админу
+        if not order.user.email:
+            return
+        if not settings.ADMIN_EMAIL:
+            return
+        
         send_mail(
             subject=f'Заказ №{order.id} подтверждён',
             message=(
