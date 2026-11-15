@@ -47,6 +47,8 @@ INSTALLED_APPS = [
     'djoser',
 ]
 
+AUTH_USER_MODEL = 'backend.User'
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -161,13 +163,17 @@ REST_FRAMEWORK = {
 }
 
 DJOSER = {
-    'LOGIN_FIELD': 'username',
+    'LOGIN_FIELD': 'email',
     'USER_CREATE_PASSWORD_RETYPE': True,
     'SEND_ACTIVATION_EMAIL': True,
     'SEND_CONFIRMATION_EMAIL': True,
-    'ACTIVATION_URL': 'api/v1/auth/users/activate/{uid}/{token}',
+    'ACTIVATION_URL': 'api/v1/auth/users/activation/',
     'PASSWORD_RESET_CONFIRM_URL': 'api/v1/auth/users/password/reset/confirm/{uid}/{token}',
-    'SERIALIZERS': {},
+    'SERIALIZERS': {
+        'user_create': 'backend.serializers.UserCreateSerializer',
+        'user_create_password_retype': 'backend.serializers.UserCreateSerializer',
+        'current_user': 'backend.serializers.UserSerializer',
+    },
     'TOKEN_MODEL': 'rest_framework.authtoken.models.Token',
     'EMAIL': {
         'activation': 'djoser.email.ActivationEmail',

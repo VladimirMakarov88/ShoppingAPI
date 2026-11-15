@@ -1,8 +1,37 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
+
+
+class User(AbstractUser):
+    """Покупатель или поставщик."""
+    class Type(models.TextChoices):
+        BUYER = 'buyer', 'Покупатель'
+        SHOP = 'shop', 'Магазин'
+
+    email = models.EmailField('Email', unique=True)
+    type = models.CharField(
+        max_length=10, choices=Type.choices,
+        default=Type.BUYER, verbose_name='Тип',
+    )
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
+
+    class Meta:
+        verbose_name = 'Пользователь'
+        verbose_name_plural = 'Пользователи'
+
+    def __str__(self):
+        return f'{self.email} ({self.get_type_display()})'
 
 
 class Shop(models.Model): # Магазин в системе
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE,
+        related_name='shops', verbose_name='Владелец',
+        null=True, blank=True,
+    )
 
     name = models.CharField(max_length=100, verbose_name='Название')
     url = models.URLField(null=True, blank=True, verbose_name='Ссылка')
