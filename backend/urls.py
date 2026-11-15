@@ -5,6 +5,10 @@ from .views import (
     ContactViewSet, BasketView, OrderViewSet,
 )
 
+from .views_partner import (
+    PartnerShopView, PartnerUpdateView, PartnerOrderViewSet,
+)
+
 router = DefaultRouter()
 
 router.register('products', ProductViewSet, basename='products')
@@ -13,6 +17,11 @@ router.register('shops', ShopViewSet, basename='shops')
 router.register('contacts', ContactViewSet, basename='contacts')
 router.register('basket', BasketView, basename='basket')
 router.register('orders', OrderViewSet, basename='orders')
+
+router.register('partner/shop', PartnerShopView, basename='partner-shop')
+router.register('partner/update', PartnerUpdateView, basename='partner-update')
+router.register('partner/orders', PartnerOrderViewSet, basename='partner-orders')
+
 
 urlpatterns = [
     path('', include(router.urls)),
